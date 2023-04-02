@@ -1,0 +1,48 @@
+name: Test
+on: [pull_request, workflow_dispatch]
+permissions:
+  contents: write
+  pull-requests: write
+defaults:
+  run:
+    shell: bash
+env:
+  BRANCH: test-${{ github.run_id }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup
+        run: date > foo.md
+
+      - name: Exercise
+        uses: ./
+        with:
+          paths: foo.md
+          branch: ${{ env.BRANCH }}
+          commit-message: Tested by example action
+          title: Tested by create-pr-action
+          body: 日本語もOKです。
+
+      - name: Verify
+        run: |
+          JSON="$(gh pr view "${BRANCH}" --json title,body)"
+          ACTUAL_TITLE="$(jq -r '.title' <<<"${JSON}")"
+          ACTUAL_BODY="$(jq -r '.body' <<<"${JSON}")"
+          test "${ACTUAL_TITLE}" = "Tested by create-pr-action"
+          test "${ACTUAL_BODY}" = "日本語もOKです。"
+
+  teardown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [test]
+    if: ${{ always() }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: gh pr close "${BRANCH}" || true
+      - run: git push origin "${BRANCH}" --delete || true
